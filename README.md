@@ -210,8 +210,6 @@ HiringAI/
 
 ## 📝 License
 
-MIT License - Feel free to use this project for learning and development.
-
 
 *Built with ❤️ for autonomous hiring systems*
 

@@ -81,14 +81,19 @@ const CandidateCodingAssessment = () => {
                                 java: `class Solution {\n    public Object solve(Object input) {\n        // return the result\n        return null;\n    }\n}`
                             };
 
+                            // Use ALL generated test cases - count is set by admin's testIntensity
+                            const tcList = (q.testCases && q.testCases.length > 0)
+                                ? q.testCases
+                                : [{ id: 1, input: {}, expected: '' }];
+
                             return {
                                 id: q.id,
                                 title: q.title || 'Coding Challenge',
                                 description: q.description || 'Solve this problem.',
                                 difficulty: q.difficulty || 'Medium',
                                 examples: (q.examples && q.examples.length > 0) ? q.examples : [{ input: 'Example input', output: 'Example output', explanation: 'No examples provided' }],
-                                testCases: (q.testCases && q.testCases.length > 0) ? q.testCases : [{ id: 1, input: '', expected: '' }],
-                                defaultTestCases: (q.testCases && q.testCases.length > 0) ? q.testCases : [{ id: 1, input: '', expected: '' }],
+                                testCases: tcList,
+                                defaultTestCases: tcList,
                                 constraints: q.constraints || [],
                                 starterCode: {
                                     python: q.starterCode?.python || STRICT_TEMPLATES.python,
@@ -507,8 +512,8 @@ const CandidateCodingAssessment = () => {
                                 key={q.id}
                                 onClick={() => setCurrentQuestionIndex(idx)}
                                 className={`px-3 py-1.5 rounded text-xs font-medium transition-all flex items-center gap-2 whitespace-nowrap ${currentQuestionIndex === idx
-                                    ? 'bg-gray-800 text-white shadow-sm ring-1 ring-gray-700'
-                                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
+                                    ? 'bg-gray-800 text-white shadow-sm ring-1 ring-gray-700 font-semibold'
+                                    : 'text-gray-300 hover:text-white hover:bg-gray-800/50'
                                     }`}
                             >
                                 {attemptedQuestions.has(idx) && <Check size={12} className="text-green-500" />}
@@ -554,8 +559,8 @@ const CandidateCodingAssessment = () => {
                                     key={tab}
                                     onClick={() => setActiveLeftTab(tab.toLowerCase())}
                                     className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${activeLeftTab === tab.toLowerCase()
-                                        ? 'border-blue-500 text-blue-400'
-                                        : 'border-transparent text-gray-500 hover:text-gray-300'
+                                        ? 'border-blue-500 text-blue-400 font-semibold'
+                                        : 'border-transparent text-gray-300 hover:text-white'
                                         }`}
                                 >
                                     {tab}
@@ -590,27 +595,32 @@ const CandidateCodingAssessment = () => {
                                 )}
 
                                 {activeLeftTab === 'examples' && (
-                                    <div className="space-y-6">
+                                    <div className="space-y-5">
                                         {currentQuestion.examples.map((ex, idx) => (
-                                            <div key={idx} className="bg-gray-800/40 rounded-lg p-5 border border-gray-800/60 shadow-inner">
-                                                <h4 className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-4">Example {idx + 1}</h4>
-                                                <div className="space-y-3">
-                                                    <div className="grid grid-cols-[60px_1fr] gap-3">
-                                                        <span className="text-xs text-gray-500 font-medium">Input:</span>
-                                                        <code className="text-xs font-mono text-gray-200">
+                                            <div key={idx} className="rounded-lg border border-gray-700/60 overflow-hidden">
+                                                <div className="bg-gray-800/60 px-4 py-2 border-b border-gray-700/40">
+                                                    <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Example {idx + 1}</span>
+                                                </div>
+                                                <div className="p-4 space-y-3 bg-gray-900/40">
+                                                    {/* Input */}
+                                                    <div>
+                                                        <p className="text-xs font-bold text-gray-200 mb-1">Input</p>
+                                                        <pre className="text-xs font-mono text-gray-100 bg-gray-800/70 border border-gray-700/40 rounded px-3 py-2 whitespace-pre-wrap leading-relaxed">
                                                             {typeof ex.input === 'object' ? JSON.stringify(ex.input) : String(ex.input)}
-                                                        </code>
+                                                        </pre>
                                                     </div>
-                                                    <div className="grid grid-cols-[60px_1fr] gap-3">
-                                                        <span className="text-xs text-gray-500 font-medium">Output:</span>
-                                                        <code className="text-xs font-mono text-gray-200">
+                                                    {/* Output */}
+                                                    <div>
+                                                        <p className="text-xs font-bold text-gray-200 mb-1">Output</p>
+                                                        <pre className="text-xs font-mono text-green-300 bg-green-900/20 border border-green-800/30 rounded px-3 py-2 whitespace-pre-wrap">
                                                             {typeof ex.output === 'object' ? JSON.stringify(ex.output) : String(ex.output)}
-                                                        </code>
+                                                        </pre>
                                                     </div>
-                                                    {ex.explanation && (
-                                                        <div className="grid grid-cols-[60px_1fr] gap-3 mt-1 pt-2 border-t border-gray-800/40">
-                                                            <span className="text-xs text-gray-500 font-medium">Expl:</span>
-                                                            <p className="text-xs text-gray-400 leading-relaxed italic">{ex.explanation}</p>
+                                                    {/* Explanation */}
+                                                    {ex.explanation && ex.explanation.trim() && (
+                                                        <div>
+                                                            <p className="text-xs font-bold text-gray-200 mb-1">Explanation</p>
+                                                            <p className="text-xs text-gray-300 leading-relaxed">{ex.explanation.trim()}</p>
                                                         </div>
                                                     )}
                                                 </div>
@@ -621,10 +631,13 @@ const CandidateCodingAssessment = () => {
 
                                 {activeLeftTab === 'constraints' && (
                                     <div className="animate-in fade-in slide-in-from-left-2 duration-300">
-                                        {currentQuestion.constraints && currentQuestion.constraints.length > 0 ? (
-                                            <ul className="space-y-3 list-disc list-inside text-gray-400 text-sm marker:text-blue-500">
-                                                {currentQuestion.constraints.map((c, i) => (
-                                                    <li key={i} className="pl-2">{c}</li>
+                                        {currentQuestion.constraints && currentQuestion.constraints.filter(c => c && c.trim()).length > 0 ? (
+                                            <ul className="space-y-2">
+                                                {currentQuestion.constraints.filter(c => c && c.trim()).map((c, i) => (
+                                                    <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
+                                                        <span className="text-blue-500 mt-0.5 shrink-0">•</span>
+                                                        <code className="font-mono text-xs text-gray-200 bg-gray-800/60 rounded px-2 py-1 leading-relaxed">{c}</code>
+                                                    </li>
                                                 ))}
                                             </ul>
                                         ) : (
@@ -749,14 +762,14 @@ const CandidateCodingAssessment = () => {
                             <div className="flex gap-1">
                                 <button
                                     onClick={() => setActiveRightTab('testcases')}
-                                    className={`px-3 py-2 text-xs font-medium border-t-2 items-center flex gap-2 ${activeRightTab === 'testcases' ? 'border-blue-500 text-gray-100 bg-gray-800' : 'border-transparent text-gray-500 hover:text-gray-300'
+                                    className={`px-3 py-2 text-xs font-medium border-t-2 items-center flex gap-2 ${activeRightTab === 'testcases' ? 'border-blue-500 text-white bg-gray-800 font-semibold' : 'border-transparent text-gray-300 hover:text-white'
                                         }`}
                                 >
                                     <CheckCircle size={14} /> Test Cases
                                 </button>
                                 <button
                                     onClick={() => setActiveRightTab('results')}
-                                    className={`px-3 py-2 text-xs font-medium border-t-2 items-center flex gap-2 ${activeRightTab === 'results' ? 'border-green-500 text-gray-100 bg-gray-800' : 'border-transparent text-gray-500 hover:text-gray-300'
+                                    className={`px-3 py-2 text-xs font-medium border-t-2 items-center flex gap-2 ${activeRightTab === 'results' ? 'border-green-500 text-white bg-gray-800 font-semibold' : 'border-transparent text-gray-300 hover:text-white'
                                         }`}
                                 >
                                     <Terminal size={14} /> Test Results
@@ -790,7 +803,7 @@ const CandidateCodingAssessment = () => {
                                             <div key={tc.id} className="relative group">
                                                 <button
                                                     onClick={() => setActiveTestCaseId(tc.id)}
-                                                    className={`px-3 py-1.5 rounded text-xs font-medium border ${activeTestCaseId === tc.id ? 'bg-gray-800 border-gray-600 text-white' : 'bg-transparent border-gray-800 text-gray-500 hover:border-gray-700'
+                                                    className={`px-3 py-1.5 rounded text-xs font-medium border ${activeTestCaseId === tc.id ? 'bg-gray-800 border-gray-600 text-white font-semibold' : 'bg-transparent border-gray-800 text-gray-300 hover:text-white hover:border-gray-700'
                                                         }`}
                                                 >
                                                     Case {idx + 1}
@@ -803,25 +816,35 @@ const CandidateCodingAssessment = () => {
                                                 </button>
                                             </div>
                                         ))}
-                                        <button onClick={handleAddTestCase} className="px-2 py-1.5 rounded text-gray-500 hover:bg-gray-800 hover:text-gray-300 transition-colors">
+                                        <button onClick={handleAddTestCase} className="px-2 py-1.5 rounded text-gray-300 hover:bg-gray-800 hover:text-white transition-colors">
                                             <Plus size={14} />
                                         </button>
                                     </div>
 
-                                    {customTestCases.find(tc => tc.id === activeTestCaseId) && (
-                                        <div className="space-y-3 animate-in fade-in duration-200">
-                                            <div>
-                                                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Input</label>
-                                                <textarea
-                                                    value={typeof customTestCases.find(tc => tc.id === activeTestCaseId)?.input === 'object'
-                                                        ? JSON.stringify(customTestCases.find(tc => tc.id === activeTestCaseId)?.input, null, 2)
-                                                        : customTestCases.find(tc => tc.id === activeTestCaseId)?.input}
-                                                    onChange={(e) => handleTestCaseChange(activeTestCaseId, 'input', e.target.value)}
-                                                    className="w-full bg-gray-800 border-gray-700 rounded p-3 text-sm font-mono text-gray-200 outline-none focus:border-blue-500/50 transition-colors h-24 resize-none"
-                                                />
+                                    {customTestCases.find(tc => tc.id === activeTestCaseId) && (() => {
+                                        const activeTC = customTestCases.find(tc => tc.id === activeTestCaseId);
+                                        const inp = activeTC?.input;
+                                        // Format as LeetCode-style: param = value (one per line)
+                                        let displayValue = '';
+                                        if (inp && typeof inp === 'object' && !Array.isArray(inp)) {
+                                            displayValue = Object.entries(inp)
+                                                .map(([k, v]) => {
+                                                    const val = typeof v === 'string' ? `"${v}"` : JSON.stringify(v);
+                                                    return `${k} = ${val}`;
+                                                })
+                                                .join('\n');
+                                        } else {
+                                            displayValue = typeof inp === 'object' ? JSON.stringify(inp, null, 2) : String(inp ?? '');
+                                        }
+                                        return (
+                                            <div className="space-y-3 animate-in fade-in duration-200">
+                                                <div>
+                                                    <label className="text-xs font-bold text-gray-300 uppercase block mb-1">Input</label>
+                                                    <pre className="w-full bg-gray-800/60 border border-gray-700/50 rounded p-3 text-sm font-mono text-gray-200 leading-relaxed whitespace-pre-wrap">{displayValue}</pre>
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        );
+                                    })()}
                                 </div>
                             )}
 
@@ -861,20 +884,20 @@ const CandidateCodingAssessment = () => {
                                                         </div>
                                                         <div className="bg-gray-800/50 rounded-lg p-3 space-y-2 border border-gray-800 group-hover:border-gray-700 transition-colors">
                                                             <div className="grid grid-cols-[60px_1fr] gap-2">
-                                                                <span className="text-xs text-gray-500">Input:</span>
+                                                                <span className="text-xs text-gray-300">Input:</span>
                                                                 <code className="text-xs font-mono text-gray-300 bg-gray-900 px-1.5 py-0.5 rounded w-fit">
                                                                     {typeof res.input === 'object' ? JSON.stringify(res.input) : String(res.input)}
                                                                 </code>
                                                             </div>
                                                             <div className="grid grid-cols-[60px_1fr] gap-2">
-                                                                <span className="text-xs text-gray-500">Output:</span>
+                                                                <span className="text-xs text-gray-300">Output:</span>
                                                                 <code className={`text-xs font-mono px-1.5 py-0.5 rounded w-fit ${res.status === 'passed' ? 'text-green-300 bg-green-900/20' : 'text-red-300 bg-red-900/20'}`}>
                                                                     {typeof res.output === 'object' ? JSON.stringify(res.output) : String(res.output)}
                                                                 </code>
                                                             </div>
                                                             {res.status !== 'passed' && (
                                                                 <div className="grid grid-cols-[60px_1fr] gap-2">
-                                                                    <span className="text-xs text-gray-500">Expected:</span>
+                                                                    <span className="text-xs text-gray-300">Expected:</span>
                                                                     <code className="text-xs font-mono text-gray-300 bg-gray-900 px-1.5 py-0.5 rounded w-fit">
                                                                         {typeof res.expected === 'object' ? JSON.stringify(res.expected) : String(res.expected)}
                                                                     </code>

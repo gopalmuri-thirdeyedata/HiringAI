@@ -263,18 +263,10 @@ const VapiInterview = () => {
             console.log("Starting VAPI with Assistant ID:", assistantIdFromStorage);
 
             if (!assistantIdFromStorage) {
-                // Last ditch fallback: Generic technical interviewer IF none found
-                // But better to throw error so we know init failed
                 throw new Error("Interview session not initialized. Please refresh the page.");
             }
 
-            // Ensure any previous session is stopped
-            vapiRef.current.stop();
-
-            // Small delay to ensure clean state
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            // Start with overrides
+            // Start the VAPI call — do NOT call stop() here, it triggers call-end prematurely
             await vapiRef.current.start(assistantIdFromStorage);
 
             // Clear timeout on success
@@ -322,14 +314,24 @@ const VapiInterview = () => {
 
     // Submit Results
     const submitInterviewResults = async () => {
+        // Guard: only submit if the call actually started (startTimeRef is set by call-start event)
+        if (!startTimeRef.current) {
+            console.warn("submitInterviewResults called but call never started. Skipping submission.");
+            return;
+        }
+
+        // Guard: if interview lasted < 10 seconds, it was likely a connection glitch — don't mark as submitted
+        const interviewDuration = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        if (interviewDuration < 10) {
+            console.warn(`Interview ended after only ${interviewDuration}s — likely a connection error, not submitting.`);
+            setStatus("error");
+            setConnectionError(`VAPI connected but disconnected after ${interviewDuration}s. Please retry.`);
+            startTimeRef.current = null; // Reset so retry works
+            return;
+        }
+
         try {
             const token = localStorage.getItem('candidateToken');
-            const candidateInfo = JSON.parse(localStorage.getItem('candidateInfo') || '{}');
-
-            // Calculate actual duration based on start time
-            const interviewDuration = startTimeRef.current
-                ? Math.floor((Date.now() - startTimeRef.current) / 1000)
-                : 0;
 
             const response = await fetch(`${API_URL}/api/interview/submit`, {
                 method: 'POST',

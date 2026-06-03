@@ -121,11 +121,11 @@ yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
 
-# Production build
-/build
-/dist
-/.next
-/out
+# Production build (any level)
+dist/
+build/
+.next/
+out/
 
 # Package manager lock files (optional - uncomment if you want to ignore them)
 # package-lock.json
@@ -254,3 +254,31 @@ config.local.json
 
 # Documentation builds
 docs/_build/
+
+# ====================================
+# BACKEND SPECIFIC
+# ====================================
+# Python virtual environment
+backend/venv/
+backend/.venv/
+
+# ChromaDB vector store
+backend/chroma_db/
+
+# Media / uploaded files
+backend/media/
+
+# ====================================
+# FRONTEND SPECIFIC
+# ====================================
+# Local env files with real secrets
+frontend/.env.local
+frontend/.env.production
+frontend/.env.development
+
+# Built output
+frontend/dist/
+frontend/build/
+
+# logo / base64 text files
+logo_base64.txt

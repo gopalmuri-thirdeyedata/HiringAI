@@ -34,25 +34,34 @@ def process_single_resume(file_path: str, filename: str, job_description: str, u
         "reasoning": "N/A",
         "analysis": {},
         "candidate_info": {},
-        "timings": {}
+        "timings": {},
+        "rag_mode": "direct_text"
     }
     
     try:
-        # 1. Ingest
-        t0 = time.time()
         resume_id = f"temp_{filename}"
-        user_id = 1 
-        RAGService.ingest_resume(user_id, resume_id, file_path)
-        t1 = time.time()
-        result["timings"]["ingest"] = t1 - t0
-        
-        # 2. Extract & Screen
+
+        # 1. Extract resume text first so we can still continue even if the
+        # embedding stack is unavailable in the current Python environment.
         full_text = RAGService.extract_text_from_pdf(file_path)
         candidate_info = RAGService.extract_candidate_info(full_text, filename)
         result["candidate_info"] = candidate_info
         result["full_text"] = full_text
         
-        # 3. Screen (Pass full_text directly)
+        # 2. Best-effort vector ingestion. If sentence-transformers is broken,
+        # continue with direct full-text screening instead of failing the upload.
+        t0 = time.time()
+        try:
+            user_id = 1
+            RAGService.ingest_resume(user_id, resume_id, file_path)
+            result["rag_mode"] = "vector_plus_text"
+        except Exception as ingest_error:
+            result["rag_mode"] = "direct_text_fallback"
+            print(f"Vector ingest skipped for {filename}: {ingest_error}")
+        t1 = time.time()
+        result["timings"]["ingest"] = t1 - t0
+
+        # 3. Screen using the extracted full text directly.
         t2 = time.time()
         analysis = RAGService.screen_resume(job_description, resume_id, full_text)
         t3 = time.time()
@@ -462,18 +471,21 @@ def bulk_update_candidates(
             candidate.status = payload.status
             has_changed = True
             
-            # Trigger Offer Email if status is "Offer Released"
-            if payload.status == "Offer Released":
-                candidate.stage = models.CandidateStage.Offer_Sent.value # Update stage so they leave the interview round
-                try:
-                    import utils
-                    from services import email_templates
-                    subject = "Congratulations! Your Offer is Ready"
-                    html = email_templates.get_offer_email_template(candidate.name, candidate.role or "Software Engineer")
-                    if utils.send_email(candidate.email, subject, html):
-                        email_sent_count += 1
-                except Exception as e:
-                    print(f"Failed to send offer email to {candidate.email}: {e}")
+        # Trigger Offer Email if the frontend explicitly requests "Offer Released" status
+        # This is outside the status check to allow re-sending if it failed previously
+        if payload.status == "Offer Released":
+            candidate.stage = models.CandidateStage.Offer_Sent.value # Update stage so they leave the interview round
+            has_changed = True
+            try:
+                import utils
+                from services import email_templates
+                subject = "Congratulations! Your Offer is Ready"
+                html = email_templates.get_offer_email_template(candidate.name, candidate.role or "Software Engineer")
+                print(f"Attempting to send offer to: {candidate.email}")
+                if utils.send_email(candidate.email, subject, html):
+                    email_sent_count += 1
+            except Exception as e:
+                print(f"Failed to send offer email to {candidate.email}: {e}")
 
         if has_changed:
             updated_count += 1
@@ -486,13 +498,6 @@ def bulk_update_candidates(
     
     return {
         "message": msg,
-        "count": updated_count
-    }
-        
-    db.commit()
-    
-    return {
-        "message": f"Successfully promoted {updated_count} candidate(s) to {payload.stage}.",
         "count": updated_count
     }
 

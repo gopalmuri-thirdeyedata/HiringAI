@@ -2,16 +2,16 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import models, database
-from routers import auth, assessments, resume, dashboard, settings, interview
 import os
-# Suppress TensorFlow Warnings
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-
 from dotenv import load_dotenv
 
 load_dotenv()
+
+import models, database
+from routers import auth, assessments, resume, dashboard, settings, interview
+# Suppress TensorFlow Warnings
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 app = FastAPI(title="HiringAI Enterprise API")
 

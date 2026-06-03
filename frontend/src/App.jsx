@@ -1,6 +1,5 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import ResumeScreening from './pages/ResumeScreening';
 import CodingRound from './pages/CodingRound';
@@ -36,9 +35,7 @@ function App() {
                     {/* Public/Auth Routes */}
                     <Route path="/login" element={<Home />} />
 
-                    <Route element={<AuthLayout />}>
-                        {/* Add other auth routes if any, or remove AuthLayout if unused */}
-                    </Route>
+
 
                     {/* Admin Dashboard Routes - Protected by Clerk */}
                     <Route element={<ClerkAdminGuard><DashboardLayout /></ClerkAdminGuard>}>

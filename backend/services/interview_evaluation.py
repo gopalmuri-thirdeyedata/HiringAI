@@ -1,8 +1,9 @@
 import os
 import json
-from groq import Groq
+from dotenv import load_dotenv
+from . import groq_client
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+load_dotenv()
 
 def evaluate_interview_transcript(transcript: list, candidate_name: str, role: str, resume_summary: str = ""):
     """
@@ -91,16 +92,18 @@ Return ONLY valid JSON in this exact format:
 """
     
     try:
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are an expert technical interview evaluator. Return only valid JSON."},
-                {"role": "user", "content": evaluation_prompt}
-            ],
-            temperature=0.3,
-            response_format={"type": "json_object"}
-        )
-        
+        def make_call(client):
+            return client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {"role": "system", "content": "You are an expert technical interview evaluator. Return only valid JSON."},
+                    {"role": "user", "content": evaluation_prompt}
+                ],
+                temperature=0.3,
+                response_format={"type": "json_object"}
+            )
+            
+        response = groq_client.call_groq_sdk(make_call)
         result = json.loads(response.choices[0].message.content)
         
         # Ensure all required fields exist with defaults
@@ -115,6 +118,8 @@ Return ONLY valid JSON in this exact format:
         
     except Exception as e:
         print(f"Interview evaluation error: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "technical_accuracy": 0,
             "communication_clarity": 0,
@@ -123,3 +128,5 @@ Return ONLY valid JSON in this exact format:
             "overall_score": 0,
             "feedback": f"Evaluation failed: {str(e)}"
         }
+    
+

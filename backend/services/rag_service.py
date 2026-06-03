@@ -10,6 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import requests
+from . import groq_client
 
 load_dotenv()
 
@@ -110,12 +111,11 @@ class RAGService:
         """
         Uses Groq to parse structured contact info from raw text.
         """
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key: 
+        if not groq_client.has_groq_key():
             return {}
 
         try:
-            return RAGService._inner_extract_with_llm(text_chunk, api_key)
+            return RAGService._inner_extract_with_llm(text_chunk)
         except Exception as e:
             print(f"DEBUG: Groq Extraction Exception after retries: {e}")
             return {}
@@ -126,7 +126,7 @@ class RAGService:
         wait=wait_exponential(multiplier=2, min=2, max=10),
         retry=retry_if_exception_type(requests.exceptions.HTTPError)
     )
-    def _inner_extract_with_llm(text_chunk, api_key):
+    def _inner_extract_with_llm(text_chunk):
         prompt = f"""
         Extract the **Candidate Name** and **Email Address** from the text below.
         If email is not found, return null.
@@ -142,11 +142,6 @@ class RAGService:
         }}
         """
         
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
         url = "https://api.groq.com/openai/v1/chat/completions" 
         payload = {
             "messages": [
@@ -161,8 +156,7 @@ class RAGService:
         # DEBUG
         print(f"DEBUG: Calling Groq for extraction on {len(text_chunk)} chars...")
         
-        # Increased timeout to 15s
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response = groq_client.execute_groq_request(url, payload, timeout=15)
         response.raise_for_status() # Trigger tenacity retry
         
         if response.status_code == 200:
@@ -233,8 +227,9 @@ class RAGService:
             resume_context = "\n".join(matched_chunks)
         
         # 3. Call Groq API with context
-        api_key = os.getenv("GROQ_API_KEY")
-        return RAGService.call_groq_api(jd_text, resume_context, api_key)
+        if not groq_client.has_groq_key():
+            return {"score": 0, "reasoning": "Missing API Key", "key_skills_match": [], "missing_skills": []}
+        return RAGService.call_groq_api(jd_text, resume_context)
 
     @staticmethod
     @retry(
@@ -242,10 +237,7 @@ class RAGService:
         wait=wait_exponential(multiplier=2, min=2, max=10),
         retry=retry_if_exception_type(requests.exceptions.HTTPError)
     )
-    def call_groq_api(jd, resume_context, api_key):
-        if not api_key:
-            return {"score": 0, "reasoning": "Missing API Key", "key_skills_match": [], "missing_skills": []}
-            
+    def call_groq_api(jd, resume_context):
         prompt = f"""
         Act as a Senior Technical Recruiter evaluation engine.
         
@@ -289,11 +281,6 @@ class RAGService:
         }}
         """
         
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
         try:
             url = "https://api.groq.com/openai/v1/chat/completions" 
             payload = {
@@ -306,7 +293,7 @@ class RAGService:
                 "response_format": {"type": "json_object"}
             }
             
-            response = requests.post(url, headers=headers, json=payload)
+            response = groq_client.execute_groq_request(url, payload)
             response.raise_for_status() 
             
             data = response.json()

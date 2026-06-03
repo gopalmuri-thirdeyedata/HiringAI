@@ -43,6 +43,7 @@ class Assessment(Base):
     config = Column(JSON, default={})
     status = Column(String(50), default=AssessmentStatus.pending)
     score = Column(Float, default=0.0)
+    analysis_data = Column(JSON, nullable=True)
     
     user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())

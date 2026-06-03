@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
 from typing import List, Optional
 import string
 import random
 import os
 import copy
-import schemas, models, utils, database
 import schemas, models, utils, database
 from .auth import get_current_user
 from services import ai_generator, email_templates, piston_service
@@ -253,7 +253,6 @@ def get_my_latest_assessment(
             f.write(f"--- ERROR ---\n{error_msg}\n{traceback_str}\n")
             
         raise HTTPException(status_code=500, detail=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/start/{assessment_id}")
 def start_assessment(
@@ -406,10 +405,17 @@ def execute_code(
             
     # If we are here, Piston failed or Parsing failed
     analysis = ai_generator.analyze_error(request.code, piston_res.get("output", ""))
+
+    error_type = "compilation_error"
+    if piston_res.get("status") == "service_error":
+        error_type = "service_error"
+    elif piston_res.get("status") == "failed":
+        error_type = "runtime_error"
     
     return {
         "syntax_valid": False,
         "error_message": piston_res.get("output", "Execution Failed"),
+        "error_type": error_type,
         "results": [],
         "feedback": analysis
     }

@@ -5,7 +5,11 @@ import re
 from dotenv import load_dotenv
 load_dotenv()
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+from . import groq_client
+
+
+GROQ_API_KEY = "resilient" if groq_client.has_groq_key() else None
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 def generate_questions(assessment_type: str, config: dict):
@@ -265,6 +269,14 @@ def generate_java_test_calls(code: str, test_cases: list):
         inputs = inp if isinstance(inp, dict) else {"input": inp}
         
         for k, v in inputs.items():
+            # Auto-heal stringified arrays
+            if isinstance(v, str) and v.strip().startswith('[') and v.strip().endswith(']'):
+                try:
+                    import json
+                    v = json.loads(v)
+                except:
+                    pass
+                    
             if isinstance(v, list):
                 if all(isinstance(x, int) for x in v):
                     arr_init = f"new int[]{{{','.join(map(str, v))}}}"
@@ -273,7 +285,8 @@ def generate_java_test_calls(code: str, test_cases: list):
                     else:
                          args.append(arr_init)
                 elif all(isinstance(x, str) for x in v):
-                    args.append(f"new String[]{{{','.join([f'\"{x}\"' for x in v])}}}")
+                    quoted_values = ",".join([f'"{x}"' for x in v])
+                    args.append(f"new String[]{{{quoted_values}}}")
                 else:
                     args.append("null")
             elif isinstance(v, str):
@@ -386,17 +399,22 @@ def generate_coding_questions(config: dict):
     
     {"CRITICAL INSTRUCTION: " + custom_notes if custom_notes else ""}
     
+    STRICT TOPIC RESTRICTIONS (MUST FOLLOW):
+    - ALLOWED topics: Arrays, Strings, HashMaps, Math, Sorting, Sliding Window, Two Pointers, Binary Search, Dynamic Programming, Stack/Queue, Matrix, Prefix Sum, Frequency Counting.
+    - FORBIDDEN topics: Linked Lists, Trees, Graphs, Heaps, Tries, anything requiring Circular References, anything where test case input can NOT be expressed as a simple integer, string, array of integers, or array of strings.
+    - If the selected topic would require Linked List or Tree structures in the test input, SWITCH to an Array-based variant of the same problem.
+    
     GUIDELINES:
     1. Problem Statement: TECHNICAL, detailed, and clear. Explain the goal thoroughly.
-    2. Constraints: Provide a list of technical constraints (e.g., "1 <= nums.length <= 10^4", "-10^9 <= nums[i] <= 10^9").
-    3. Examples: Exactly 2-3 examples. Each MUST have "input", "output", and a detailed "explanation". Use actual values, not text.
+    2. Constraints: Provide a list of at least 3 technical constraints (e.g., "1 <= nums.length <= 10^4", "-10^9 <= nums[i] <= 10^9").
+    3. Examples: EXACTLY 3 examples (no more, no less). Each MUST have "input", "output", and a detailed "explanation". Use real array/integer values, not descriptive text.
     4. Signatures (STRICT): 
        - Java: `public <type> solve(<params>)` inside `class Solution`.
        - Python: `def solve(<params>):`
        - **CRITICAL**: The method name MUST be exactly `solve`. Do NOT name it based on the problem (e.g., do not use `threeSum`).
     5. Starter Code: Professional indentation (4 spaces).
     6. Languages: ONLY Java and Python.
-    7. Test Cases: Exactly {tc_count} test cases. "input" MUST be an object mapping parameter names to values (e.g., {{"nums": [1,2,3], "target": 6}}). "expected" MUST be the actual raw expected value.
+    7. Test Cases: Exactly {tc_count} test cases. "input" MUST be an object mapping parameter names to SIMPLE values ONLY: integers, strings, arrays of integers, or arrays of strings. NO nested objects. NO null values in input. "expected" MUST be the actual raw expected value (int, string, bool, or simple array).
     8. LOGICAL VERIFICATION: Before returning, cross-check every 'testCase' and 'example' against your 'description'. Ensure every single test case follows the rules defined in the description exactly.
     
     JSON STRUCTURE TO RETURN:
@@ -405,21 +423,25 @@ def generate_coding_questions(config: dict):
             "id": 1,
             "title": "Short Title",
             "description": "Full technical description...",
-            "constraints": ["1 <= n <= 100", "nums.length == n"],
+            "constraints": ["1 <= n <= 100", "nums.length == n", "-10^4 <= nums[i] <= 10^4"],
             "starterCode": {{
                 "java": "class Solution {{\\n    public int solve(int[] nums) {{\\n        \\n    }}\\n}}",
                 "python": "def solve(nums):\\n    pass"
             }},
             "testCases": [
-                {{"id": 1, "input": {{"nums": [1,2]}}, "expected": 3}}
+                {{"id": 1, "input": {{"nums": [1,2]}}, "expected": 3}},
+                {{"id": 2, "input": {{"nums": [5,10]}}, "expected": 15}},
+                {{"id": 3, "input": {{"nums": [0,0]}}, "expected": 0}}
             ],
             "examples": [
-                {{"input": "{{"nums": [1,2]}}", "output": "3", "explanation": "1 + 2 = 3"}}
+                {{"input": "nums = [1, 2]", "output": "3", "explanation": "1 + 2 = 3, so the answer is 3."}},
+                {{"input": "nums = [5, 10]", "output": "15", "explanation": "5 + 10 = 15, so the answer is 15."}},
+                {{"input": "nums = [0, 0]", "output": "0", "explanation": "0 + 0 = 0, so the answer is 0."}}
             ]
         }}
     ]
     
-    Return ONLY the raw JSON array.
+    Return ONLY the raw JSON array. No explanations, no code examples, no markdown after the JSON.
     """
     
     try:
@@ -433,11 +455,51 @@ def generate_coding_questions(config: dict):
                      q['starterCode'] = {
                         'java': q.get('code_java', ''),
                         'python': q.get('code_python', ''),
-                        'javascript': q.get('code_javascript', ''),
-                        'c': q.get('code_c', '')
                      }
-                # CLEANUP: Force strip any logic
+                # CLEANUP: Force rename method to 'solve' and strip any solution body
                 clean_starter_code(q)
+                
+                # GUARANTEE: Ensure exactly 3 examples by building from testCases if needed
+                examples = q.get('examples', [])
+                test_cases = q.get('testCases', [])
+                
+                # Build synthetic examples from test cases if AI gave fewer than 3
+                if len(examples) < 3 and test_cases:
+                    for tc in test_cases:
+                        if len(examples) >= 3:
+                            break
+                        inp = tc.get('input', {})
+                        expected = tc.get('expected', '')
+                        # Format input as LeetCode style: "param = value, param2 = value2"
+                        if isinstance(inp, dict):
+                            input_str = ', '.join(
+                                f"{k} = {json.dumps(v)}" for k, v in inp.items()
+                            )
+                        else:
+                            input_str = str(inp)
+                        output_str = json.dumps(expected) if not isinstance(expected, str) else expected
+                        # Avoid duplicate examples
+                        already_exists = any(e.get('input') == input_str for e in examples)
+                        if not already_exists:
+                            examples.append({
+                                'input': input_str,
+                                'output': output_str,
+                                'explanation': f"For input {input_str}, the expected output is {output_str}."
+                            })
+                q['examples'] = examples
+                
+                # ENFORCE: Slice testCases to EXACTLY the admin-configured count
+                # This prevents the AI from showing more tabs than the admin set
+                if q.get('testCases') and len(q['testCases']) > tc_count:
+                    q['testCases'] = q['testCases'][:tc_count]
+                # Reassign sequential IDs to avoid gaps
+                for i, tc in enumerate(q.get('testCases', [])):
+                    tc['id'] = i + 1
+                    
+                # GUARANTEE: Ensure constraints is never empty
+                if not q.get('constraints'):
+                    q['constraints'] = ["1 <= input size <= 10^4", "Values can be negative or positive"]
+                    
         return data
     except Exception as e:
         print(f"Evaluation Error: {e}")
@@ -447,30 +509,41 @@ def generate_coding_questions(config: dict):
 
 def clean_starter_code(q: dict):
     """
-    Programmatically strips the body of the 'solve' method to ensure NO solution is provided,
-    while PRESERVING the signature generated by the AI.
+    Programmatically strips the body of the solving method and renames it to 'solve'.
+    Handles cases where the AI names the function based on the problem title.
     """
     sc = q.get('starterCode', {})
     
     # --- Clean Python ---
     if sc.get('python'):
         py = sc['python']
-        # Match def solve(...): and potentially any comments/logic following it
-        # We replace it with the same signature + pass
-        match = re.search(r'(def\s+solve\s*\(.*?\)\s*:)', py)
+        # First: rename any existing function to 'solve' (AI sometimes uses problem-specific names)
+        # Match: def anyFunctionName(params): and rename to def solve(params):
+        renamed = re.sub(r'def\s+\w+\s*(\(.*?\)\s*:)', r'def solve\1', py, count=1)
+        # Extract the clean signature
+        match = re.search(r'(def\s+solve\s*\(.*?\)\s*:)', renamed)
         if match:
             sc['python'] = f"{match.group(1)}\n    pass"
+        else:
+            # Fallback: if nothing matched, set a basic template
+            sc['python'] = "def solve(input_data):\n    pass"
 
     # --- Clean Java ---
     if sc.get('java'):
         java = sc['java']
-        # Match class Solution { ... public <type> solve(<params>) {
-        # We extract up to the signature's opening brace and cap it.
-        match = re.search(r'(class\s+Solution\s*\{.*?\s+public\s+[\w<>]+\s+solve\s*\(.*?\)\s*\{)', java, re.DOTALL)
+        # First: rename any public method to 'solve'
+        # Match: public <returnType> anyMethodName( -> public <returnType> solve(
+        renamed = re.sub(
+            r'(public\s+[\w<>\[\]]+\s+)(\w+)(\s*\()',
+            lambda m: m.group(1) + 'solve' + m.group(3),
+            java,
+            count=1
+        )
+        # Now extract the clean class+method signature
+        match = re.search(r'(class\s+Solution\s*\{.*?\s+public\s+[\w<>\[\]]+\s+solve\s*\(.*?\)\s*\{)', renamed, re.DOTALL)
         if match:
-            # Determine return type for a valid placeholder
             sig = match.group(1)
-            ret_match = re.search(r'public\s+([\w<>]+)\s+solve', sig)
+            ret_match = re.search(r'public\s+([\w<>\[\]]+)\s+solve', sig)
             ret_type = ret_match.group(1) if ret_match else "int"
             
             placeholder = "0"
@@ -481,12 +554,47 @@ def clean_starter_code(q: dict):
             
             sc['java'] = f"{sig}\n        // TODO: Implement solution\n        " + (f"return {placeholder};" if placeholder else "") + "\n    }\n}"
 
-def call_llm(prompt, retries=2):
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
+def extract_json_block(text: str) -> str:
+    # Find the first opening character ('[' or '{')
+    start_idx = -1
+    start_char = None
+    end_char = None
     
+    for i, char in enumerate(text):
+        if char in ('[', '{'):
+            start_idx = i
+            start_char = char
+            end_char = ']' if char == '[' else '}'
+            break
+            
+    if start_idx == -1:
+        return ""
+        
+    count = 0
+    in_string = False
+    escape = False
+    
+    for i in range(start_idx, len(text)):
+        char = text[i]
+        if escape:
+            escape = False
+            continue
+        if char == '\\':
+            escape = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if char == start_char:
+                count += 1
+            elif char == end_char:
+                count -= 1
+                if count == 0:
+                    return text[start_idx:i+1]
+    return ""
+
+def call_llm(prompt, retries=2):
     data = {
         "model": "llama-3.1-8b-instant", 
         "messages": [
@@ -498,7 +606,7 @@ def call_llm(prompt, retries=2):
 
     for attempt in range(retries):
         try:
-            response = requests.post(GROQ_API_URL, headers=headers, json=data, timeout=30)
+            response = groq_client.execute_groq_request(GROQ_API_URL, data, timeout=30)
             if response.status_code != 200:
                 print(f"LLM API Error (Attempt {attempt+1}): {response.status_code} - {response.text}")
                 continue # Retry
@@ -506,19 +614,53 @@ def call_llm(prompt, retries=2):
             result = response.json()
             content = result['choices'][0]['message']['content']
             
-            # Robust JSON extraction
-            import re
-            match = re.search(r'\[.*\]', content, re.DOTALL)
-            if match:
-                return json.loads(match.group(0))
+            # Robust JSON extraction using matching block parser
+            block = extract_json_block(content)
+            if block:
+                try:
+                    return json.loads(block)
+                except Exception as parse_err:
+                    print(f"Direct block parse failed, attempting fallback healing: {parse_err}")
             
-            # Fallback parse
-            content = re.sub(r'```json', '', content)
-            content = re.sub(r'```', '', content)
-            return json.loads(content.strip())
+            # Fallback parse & heal common issues
+            clean_content = block.strip() if block else content.strip()
+            if clean_content.startswith("```"):
+                import re
+                clean_content = re.sub(r'^```(?:json)?\s*', '', clean_content)
+                clean_content = re.sub(r'\s*```$', '', clean_content)
+            clean_content = clean_content.strip()
+            
+            # Extract main JSON block
+            first_bracket = clean_content.find('[')
+            if first_bracket == -1:
+                first_bracket = clean_content.find('{')
+            last_bracket = clean_content.rfind(']')
+            if last_bracket == -1:
+                last_bracket = clean_content.rfind('}')
+                
+            if first_bracket != -1 and last_bracket != -1 and last_bracket > first_bracket:
+                clean_content = clean_content[first_bracket:last_bracket+1]
+                
+            # Heal trailing commas in arrays/objects
+            import re
+            clean_content = re.sub(r',\s*([\]}])', r'\1', clean_content)
+            
+            try:
+                return json.loads(clean_content)
+            except json.JSONDecodeError:
+                # Last resort Single-Quote healing
+                try:
+                    healed = re.sub(r"([{,]\s*)'([^']+)'\s*:", r'\1"\2":', clean_content)
+                    healed = re.sub(r"'\s*([,}])", r'"\1', healed)
+                    healed = re.sub(r"([{,]\s*)'", r'\1"', healed)
+                    return json.loads(healed)
+                except Exception as final_err:
+                    raise final_err
             
         except Exception as e:
             print(f"LLM Call Failed (Attempt {attempt+1}): {e}")
+            if 'content' in locals():
+                print(f"DEBUG: Raw content was:\n{content}")
             if attempt == retries - 1:
                 return [] # Give up after last retry
             import time
